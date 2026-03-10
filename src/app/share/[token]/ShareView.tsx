@@ -15,19 +15,6 @@ export default function ShareView({ project }: ShareViewProps) {
   const svgRef = useRef<SVGSVGElement>(null)
   const [showExportMenu, setShowExportMenu] = useState(false)
 
-<<<<<<< HEAD
-  // Force light theme on the share page
-  useEffect(() => {
-    const html = document.documentElement
-    html.classList.remove('dark')
-    return () => {
-      const saved = localStorage.getItem('markmap-theme')
-      if (saved !== 'light') html.classList.add('dark')
-    }
-  }, [])
-
-=======
->>>>>>> darktheme
   const handleExportSVG = () => {
     if (svgRef.current) exportSVG(svgRef.current, project.name)
     setShowExportMenu(false)
