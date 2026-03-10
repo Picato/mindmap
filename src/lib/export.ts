@@ -14,18 +14,26 @@ export function exportSVG(svgElement: SVGSVGElement, filename: string) {
   URL.revokeObjectURL(url)
 }
 
-export async function exportPNG(svgElement: SVGSVGElement, filename: string, bgColor = '#030712') {
+export async function exportPNG(svgElement: SVGSVGElement, filename: string, bgColor = '#ffffff') {
+  const bbox = svgElement.getBoundingClientRect()
+  const width = bbox.width || svgElement.clientWidth || 1200
+  const height = bbox.height || svgElement.clientHeight || 800
+
+  // Clone and set explicit dimensions so browsers render it correctly
+  const clone = svgElement.cloneNode(true) as SVGSVGElement
+  clone.setAttribute('width', String(width))
+  clone.setAttribute('height', String(height))
+  clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
+
   const serializer = new XMLSerializer()
-  const svgStr = serializer.serializeToString(svgElement)
-  const svgBlob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' })
-  const url = URL.createObjectURL(svgBlob)
+  const svgStr = serializer.serializeToString(clone)
+  // encodeURIComponent data URL is more reliable than blob URL for SVG→canvas
+  const dataUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgStr)
 
   return new Promise<void>((resolve, reject) => {
     const img = new Image()
     img.onload = () => {
       const scale = 2
-      const width = svgElement.clientWidth || 1200
-      const height = svgElement.clientHeight || 800
       const canvas = document.createElement('canvas')
       canvas.width = width * scale
       canvas.height = height * scale
@@ -39,12 +47,14 @@ export async function exportPNG(svgElement: SVGSVGElement, filename: string, bgC
         const a = document.createElement('a')
         a.href = URL.createObjectURL(blob)
         a.download = `${slugify(filename)}.png`
+        document.body.appendChild(a)
         a.click()
-        URL.revokeObjectURL(url)
+        document.body.removeChild(a)
+        URL.revokeObjectURL(a.href)
         resolve()
       }, 'image/png')
     }
     img.onerror = reject
-    img.src = url
+    img.src = dataUrl
   })
 }

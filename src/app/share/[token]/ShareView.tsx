@@ -1,7 +1,7 @@
 'use client'
 
 import dynamic from 'next/dynamic'
-import { useRef, useEffect, useState } from 'react'
+import { useRef, useState } from 'react'
 import { BrainCircuit, Download } from 'lucide-react'
 import { exportSVG, exportPNG } from '@/lib/export'
 
@@ -14,16 +14,6 @@ interface ShareViewProps {
 export default function ShareView({ project }: ShareViewProps) {
   const svgRef = useRef<SVGSVGElement>(null)
   const [showExportMenu, setShowExportMenu] = useState(false)
-
-  // Force light theme on the share page
-  useEffect(() => {
-    const html = document.documentElement
-    html.classList.remove('dark')
-    return () => {
-      const saved = localStorage.getItem('markmap-theme')
-      if (saved !== 'light') html.classList.add('dark')
-    }
-  }, [])
 
   const handleExportSVG = () => {
     if (svgRef.current) exportSVG(svgRef.current, project.name)
