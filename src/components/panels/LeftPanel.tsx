@@ -83,6 +83,9 @@ export default function LeftPanel({
         {collapsed ? (
           /* ── Icon-only strip ── */
           <div className="flex flex-col items-center h-full py-2 gap-1">
+            {/* Brand icon */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/markmap-icon.svg" alt="Markmap" className="w-6 h-6 mb-1" />
             {/* Expand button */}
             <button onClick={onToggleCollapse} title="Expand panel" className={iconBtn}>
               <ChevronRight className="w-4 h-4" />
@@ -127,7 +130,11 @@ export default function LeftPanel({
           <>
             {/* Header */}
             <div className="flex items-center justify-between px-3 py-3 border-b border-gray-200 dark:border-gray-800 h-12 shrink-0">
-              <span className="text-gray-900 dark:text-white font-semibold text-sm truncate">RFP/RFI/BQ</span>
+              <div className="flex items-center gap-2 min-w-0">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/markmap-icon.svg" alt="Markmap" className="w-6 h-6 shrink-0" />
+                <span className="text-gray-900 dark:text-white font-semibold text-sm truncate">RFP/RFQ/BQ</span>
+              </div>
               <div className="flex items-center gap-1 ml-auto">
                 <button onClick={() => setShowNewDialog(true)} title="New project" className={iconBtn}>
                   <Plus className="w-4 h-4" />

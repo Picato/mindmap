@@ -16,6 +16,9 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Markmap – Visual Mindmapping",
   description: "Create and share beautiful mindmaps with Markmap",
+  icons: {
+    icon: "/markmap-icon.svg",
+  },
 };
 
 export default function RootLayout({
