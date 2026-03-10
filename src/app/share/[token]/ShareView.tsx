@@ -1,7 +1,7 @@
 'use client'
 
 import dynamic from 'next/dynamic'
-import { useRef, useEffect, useState } from 'react'
+import { useRef, useState } from 'react'
 import { BrainCircuit, Download } from 'lucide-react'
 import { exportSVG, exportPNG } from '@/lib/export'
 
@@ -15,6 +15,7 @@ export default function ShareView({ project }: ShareViewProps) {
   const svgRef = useRef<SVGSVGElement>(null)
   const [showExportMenu, setShowExportMenu] = useState(false)
 
+<<<<<<< HEAD
   // Force light theme on the share page
   useEffect(() => {
     const html = document.documentElement
@@ -25,6 +26,8 @@ export default function ShareView({ project }: ShareViewProps) {
     }
   }, [])
 
+=======
+>>>>>>> darktheme
   const handleExportSVG = () => {
     if (svgRef.current) exportSVG(svgRef.current, project.name)
     setShowExportMenu(false)

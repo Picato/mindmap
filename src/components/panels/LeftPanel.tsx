@@ -3,11 +3,10 @@
 import { useState } from 'react'
 import {
   Plus, ChevronLeft, ChevronRight, FileText,
-  Pencil, Trash2, Check, X, LogOut, Sun, Moon,
+  Pencil, Trash2, Check, X, LogOut,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
-import { useTheme } from '@/components/ui/ThemeProvider'
 import type { Project, Profile } from '@/types/database'
 import NewProjectDialog from '@/components/projects/NewProjectDialog'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
@@ -35,13 +34,19 @@ export default function LeftPanel({
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const supabase = createClient()
   const router = useRouter()
-  const { theme, toggleTheme } = useTheme()
 
   async function handleCreate(name: string) {
     setShowNewDialog(false)
+    const { data: templateData } = await supabase
+      .from('templates')
+      .select('content')
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .single()
+    const defaultContent = templateData?.content ?? '# My Mindmap\n## Topic 1\n### Subtopic 1\n## Topic 2'
     const { data, error } = await supabase
       .from('projects')
-      .insert({ user_id: profile.id, name, content: '# My Mindmap\n## Topic 1\n### Subtopic 1\n## Topic 2' })
+      .insert({ user_id: profile.id, name, content: defaultContent })
       .select().single()
     if (!error && data) onProjectCreated(data as Project)
   }
@@ -117,10 +122,7 @@ export default function LeftPanel({
             </div>
 
             {/* Bottom icons */}
-            <div className="border-t border-gray-200 dark:border-gray-800 w-full flex flex-col items-center gap-2 pt-2 pb-1">
-              <button onClick={toggleTheme} title={theme === 'dark' ? 'Light mode' : 'Dark mode'} className={iconBtn}>
-                {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-              </button>
+            <div className="border-t border-gray-200 w-full flex flex-col items-center gap-2 pt-2 pb-1">
               <div title={profile.full_name ?? profile.email ?? ''}>{avatar}</div>
             </div>
           </div>
@@ -200,10 +202,7 @@ export default function LeftPanel({
             </div>
 
             {/* Bottom */}
-            <div className="border-t border-gray-200 dark:border-gray-800 p-3 shrink-0 flex items-center gap-2">
-              <button onClick={toggleTheme} title={theme === 'dark' ? 'Light mode' : 'Dark mode'} className={iconBtn}>
-                {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-              </button>
+            <div className="border-t border-gray-200 p-3 shrink-0 flex items-center gap-2">
               {avatar}
               <div className="flex-1 min-w-0">
                 <p className="text-gray-900 dark:text-white text-xs font-medium truncate">{profile.full_name}</p>

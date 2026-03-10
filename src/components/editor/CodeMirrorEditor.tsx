@@ -2,21 +2,17 @@
 
 import { useEffect, useRef } from 'react'
 import { EditorView, keymap, lineNumbers, highlightActiveLine } from '@codemirror/view'
-import { EditorState, Compartment } from '@codemirror/state'
+import { EditorState } from '@codemirror/state'
 import { markdown } from '@codemirror/lang-markdown'
 import { syntaxHighlighting, HighlightStyle } from '@codemirror/language'
 import { tags } from '@lezer/highlight'
-import { oneDark } from '@codemirror/theme-one-dark'
 import { defaultKeymap, indentWithTab } from '@codemirror/commands'
-import { useTheme } from '@/components/ui/ThemeProvider'
 
 interface CodeMirrorEditorProps {
   value: string
   onChange: (value: string) => void
   onSave?: () => void
 }
-
-const themeCompartment = new Compartment()
 
 const lightTheme = EditorView.theme({
   '&': { backgroundColor: '#ffffff', color: '#1f2937' },
@@ -45,19 +41,15 @@ const lightHighlightStyle = HighlightStyle.define([
   { tag: tags.punctuation,   color: '#6b7280' },
 ])
 
-const lightBundle = [lightTheme, syntaxHighlighting(lightHighlightStyle)]
-
 export default function CodeMirrorEditor({ value, onChange, onSave }: CodeMirrorEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const onChangeRef = useRef(onChange)
   const onSaveRef = useRef(onSave)
-  const { theme } = useTheme()
 
   onChangeRef.current = onChange
   onSaveRef.current = onSave
 
-  // Mount editor once
   useEffect(() => {
     if (!containerRef.current) return
 
@@ -69,7 +61,8 @@ export default function CodeMirrorEditor({ value, onChange, onSave }: CodeMirror
     const state = EditorState.create({
       doc: value,
       extensions: [
-        themeCompartment.of(theme === 'dark' ? oneDark : lightBundle),
+        lightTheme,
+        syntaxHighlighting(lightHighlightStyle),
         lineNumbers(),
         highlightActiveLine(),
         markdown(),
@@ -91,13 +84,6 @@ export default function CodeMirrorEditor({ value, onChange, onSave }: CodeMirror
     return () => { view.destroy(); viewRef.current = null }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  // Switch theme dynamically without destroying editor
-  useEffect(() => {
-    viewRef.current?.dispatch({
-      effects: themeCompartment.reconfigure(theme === 'dark' ? oneDark : lightBundle),
-    })
-  }, [theme])
 
   // Sync external value changes (template apply, project switch)
   useEffect(() => {
