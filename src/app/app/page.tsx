@@ -1,0 +1,191 @@
+'use client'
+
+export const dynamic = 'force-dynamic'
+
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { createClient } from '@/lib/supabase/client'
+import type { Project, Profile } from '@/types/database'
+import LeftPanel from '@/components/panels/LeftPanel'
+import MiddlePanel from '@/components/panels/MiddlePanel'
+import RightPanel from '@/components/panels/RightPanel'
+import PanelDivider from '@/components/panels/PanelDivider'
+import { exportSVG, exportPNG } from '@/lib/export'
+import { useRouter } from 'next/navigation'
+const MIN_LEFT = 56
+const MAX_LEFT = 480
+const DEFAULT_LEFT = 280
+
+const MIN_EDITOR = 300
+const MAX_EDITOR = 700
+const DEFAULT_EDITOR = 420
+
+export default function AppPage() {
+  const [profile, setProfile] = useState<Profile | null>(null)
+  const [projects, setProjects] = useState<Project[]>([])
+  const [activeProject, setActiveProject] = useState<Project | null>(null)
+  const [content, setContent] = useState('')
+  const [savedContent, setSavedContent] = useState('')
+  const [leftWidth, setLeftWidth] = useState(DEFAULT_LEFT)
+  const [leftCollapsed, setLeftCollapsed] = useState(false)
+  const [editorWidth, setEditorWidth] = useState(DEFAULT_EDITOR)
+  const svgRef = useRef<SVGSVGElement>(null)
+  const supabase = createClient()
+  const router = useRouter()
+
+  const isDirty = content !== savedContent
+
+  useEffect(() => {
+    async function load() {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) { router.push('/auth'); return }
+
+      const { data: prof } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single()
+      if (prof) setProfile(prof as Profile)
+
+      const { data: projs } = await supabase
+        .from('projects')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('updated_at', { ascending: false })
+      if (projs) {
+        const typedProjs = projs as Project[]
+        setProjects(typedProjs)
+        if (typedProjs.length > 0) {
+          const first = typedProjs[0]
+          setActiveProject(first)
+          setContent(first.content)
+          setSavedContent(first.content)
+        }
+      }
+    }
+    load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    function handleBeforeUnload(e: BeforeUnloadEvent) {
+      if (isDirty) { e.preventDefault(); e.returnValue = '' }
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [isDirty])
+
+  function handleSelectProject(project: Project) {
+    if (isDirty) {
+      const ok = confirm('You have unsaved changes. Leave without saving?')
+      if (!ok) return
+    }
+    setActiveProject(project)
+    setContent(project.content)
+    setSavedContent(project.content)
+  }
+
+  function handleProjectCreated(project: Project) {
+    setProjects(prev => [project, ...prev])
+    handleSelectProject(project)
+  }
+
+  function handleProjectRenamed(id: string, name: string) {
+    setProjects(prev => prev.map(p => p.id === id ? { ...p, name } : p))
+    if (activeProject?.id === id) setActiveProject(prev => prev ? { ...prev, name } : prev)
+  }
+
+  function handleProjectDeleted(id: string) {
+    setProjects(prev => prev.filter(p => p.id !== id))
+    if (activeProject?.id === id) { setActiveProject(null); setContent(''); setSavedContent('') }
+  }
+
+  function handleSaved(savedVal: string) {
+    setSavedContent(savedVal)
+    setProjects(prev =>
+      prev.map(p => p.id === activeProject?.id ? { ...p, content: savedVal, updated_at: new Date().toISOString() } : p)
+    )
+  }
+
+  function handleProjectUpdated(updated: Partial<Project>) {
+    if (!activeProject) return
+    const merged = { ...activeProject, ...updated }
+    setActiveProject(merged)
+    setProjects(prev => prev.map(p => p.id === merged.id ? merged : p))
+  }
+
+  const handleExportSVG = useCallback(() => {
+    if (svgRef.current && activeProject) exportSVG(svgRef.current, activeProject.name)
+  }, [activeProject])
+
+  const handleExportPNG = useCallback(() => {
+    if (svgRef.current && activeProject) exportPNG(svgRef.current, activeProject.name)
+  }, [activeProject])
+
+  const handleLeftDividerDrag = useCallback((delta: number) => {
+    setLeftWidth(w => Math.min(MAX_LEFT, Math.max(MIN_LEFT, w + delta)))
+  }, [])
+
+  const handleEditorDividerDrag = useCallback((delta: number) => {
+    setEditorWidth(w => Math.min(MAX_EDITOR, Math.max(MIN_EDITOR, w + delta)))
+  }, [])
+
+  if (!profile) {
+    return (
+      <div className="h-screen bg-white dark:bg-gray-950 flex items-center justify-center">
+        <div className="text-gray-400 dark:text-gray-500 text-sm">Loading…</div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex h-screen overflow-hidden bg-white dark:bg-gray-950">
+      {/* Left panel — icon strip (56px) when collapsed, full width otherwise */}
+      <div
+        style={{
+          width: leftCollapsed ? 56 : leftWidth,
+          minWidth: leftCollapsed ? 56 : leftWidth,
+          maxWidth: leftCollapsed ? 56 : leftWidth,
+        }}
+        className="h-full overflow-hidden"
+      >
+        <LeftPanel
+          profile={profile}
+          projects={projects}
+          activeProjectId={activeProject?.id ?? null}
+          onSelectProject={handleSelectProject}
+          onProjectCreated={handleProjectCreated}
+          onProjectRenamed={handleProjectRenamed}
+          onProjectDeleted={handleProjectDeleted}
+          collapsed={leftCollapsed}
+          onToggleCollapse={() => setLeftCollapsed(c => !c)}
+        />
+      </div>
+
+      {/* Divider only when panel is expanded (icon strip is fixed, not resizable) */}
+      {!leftCollapsed && <PanelDivider onDrag={handleLeftDividerDrag} />}
+
+      <div style={{ width: editorWidth, minWidth: editorWidth, maxWidth: editorWidth }} className="h-full">
+        <MiddlePanel
+          project={activeProject}
+          content={content}
+          isDirty={isDirty}
+          onContentChange={setContent}
+          onSaved={handleSaved}
+        />
+      </div>
+
+      <PanelDivider onDrag={handleEditorDividerDrag} />
+
+      <div className="flex-1 h-full overflow-hidden">
+        <RightPanel
+          project={activeProject}
+          content={content}
+          svgRef={svgRef}
+          onExportSVG={handleExportSVG}
+          onExportPNG={handleExportPNG}
+          onProjectUpdated={handleProjectUpdated}
+        />
+      </div>
+    </div>
+  )
+}
