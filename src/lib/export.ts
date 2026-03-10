@@ -14,7 +14,7 @@ export function exportSVG(svgElement: SVGSVGElement, filename: string) {
   URL.revokeObjectURL(url)
 }
 
-export async function exportPNG(svgElement: SVGSVGElement, filename: string) {
+export async function exportPNG(svgElement: SVGSVGElement, filename: string, bgColor = '#030712') {
   const serializer = new XMLSerializer()
   const svgStr = serializer.serializeToString(svgElement)
   const svgBlob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' })
@@ -31,7 +31,7 @@ export async function exportPNG(svgElement: SVGSVGElement, filename: string) {
       canvas.height = height * scale
       const ctx = canvas.getContext('2d')!
       ctx.scale(scale, scale)
-      ctx.fillStyle = '#030712' // gray-950
+      ctx.fillStyle = bgColor
       ctx.fillRect(0, 0, width, height)
       ctx.drawImage(img, 0, 0)
       canvas.toBlob(blob => {
