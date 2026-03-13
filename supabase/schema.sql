@@ -9,6 +9,7 @@ create table public.profiles (
   email text,
   full_name text,
   avatar_url text,
+  alias text,
   role text default 'user' check (role in ('user', 'admin')),
   created_at timestamptz default now()
 );
@@ -49,6 +50,24 @@ insert into public.templates (content) values (
 );
 
 -- ============================================================
+-- User groups
+-- ============================================================
+create table public.user_groups (
+  id uuid default gen_random_uuid() primary key,
+  name text not null unique,
+  created_at timestamptz default now(),
+  created_by uuid references public.profiles(id) on delete set null
+);
+
+-- Group members junction table
+create table public.group_members (
+  group_id uuid references public.user_groups(id) on delete cascade,
+  user_id uuid references public.profiles(id) on delete cascade,
+  added_at timestamptz default now(),
+  primary key (group_id, user_id)
+);
+
+-- ============================================================
 -- Auto-create profile on signup
 -- ============================================================
 create or replace function public.handle_new_user()
@@ -75,6 +94,8 @@ create trigger on_auth_user_created
 alter table public.profiles enable row level security;
 alter table public.projects enable row level security;
 alter table public.templates enable row level security;
+alter table public.user_groups enable row level security;
+alter table public.group_members enable row level security;
 
 -- Profiles: own row
 create policy "Users can view own profile"
@@ -97,6 +118,15 @@ create policy "Admins can view all profiles"
 
 create policy "Admins can delete profiles"
   on public.profiles for delete
+  using (
+    exists (
+      select 1 from public.profiles
+      where id = auth.uid() and role = 'admin'
+    )
+  );
+
+create policy "Admins can update all profiles"
+  on public.profiles for update
   using (
     exists (
       select 1 from public.profiles
@@ -129,7 +159,35 @@ create policy "Admins can manage template"
     )
   );
 
+-- User groups: admins only
+create policy "Admins can manage groups"
+  on public.user_groups for all
+  using (
+    exists (
+      select 1 from public.profiles
+      where id = auth.uid() and role = 'admin'
+    )
+  );
+
+create policy "Admins can manage group members"
+  on public.group_members for all
+  using (
+    exists (
+      select 1 from public.profiles
+      where id = auth.uid() and role = 'admin'
+    )
+  );
+
+-- ============================================================
+-- Migration: add alias and groups to an existing database
+-- (run this block if you already have a database set up)
+-- ============================================================
+-- alter table public.profiles add column if not exists alias text;
+--
+-- create table if not exists public.user_groups ( ... );
+-- create table if not exists public.group_members ( ... );
+--
 -- ============================================================
 -- After first login, grant admin role to yourself:
--- UPDATE public.profiles SET role = 'admin' WHERE email = 'your@email.com';
+-- UPDATE public.profiles SET role = 'admin' WHERE email = 'your@fpt.com';
 -- ============================================================

@@ -27,7 +27,12 @@ export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   // Public routes — always accessible
-  if (pathname.startsWith('/share/') || pathname.startsWith('/auth/callback')) {
+  if (
+    pathname.startsWith('/share/') ||
+    pathname.startsWith('/auth/callback') ||
+    pathname === '/auth/forgot-password' ||
+    pathname === '/auth/set-password'
+  ) {
     return supabaseResponse
   }
 

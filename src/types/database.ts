@@ -5,6 +5,7 @@ export interface Profile {
   email: string | null
   full_name: string | null
   avatar_url: string | null
+  alias: string | null
   role: Role
   created_at: string
 }
@@ -27,6 +28,19 @@ export interface Template {
   updated_by: string | null
 }
 
+export interface UserGroup {
+  id: string
+  name: string
+  created_at: string
+  created_by: string | null
+}
+
+export interface GroupMember {
+  group_id: string
+  user_id: string
+  added_at: string
+}
+
 export type Database = {
   public: {
     Tables: {
@@ -44,6 +58,16 @@ export type Database = {
         Row: Template
         Insert: Omit<Template, 'id' | 'updated_at'>
         Update: Partial<Omit<Template, 'id'>>
+      }
+      user_groups: {
+        Row: UserGroup
+        Insert: Omit<UserGroup, 'id' | 'created_at'>
+        Update: Partial<Omit<UserGroup, 'id'>>
+      }
+      group_members: {
+        Row: GroupMember
+        Insert: Omit<GroupMember, 'added_at'>
+        Update: never
       }
     }
   }
