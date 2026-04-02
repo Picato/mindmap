@@ -6,11 +6,14 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { Project, Profile } from '@/types/database'
 import LeftPanel from '@/components/panels/LeftPanel'
-import MiddlePanel from '@/components/panels/MiddlePanel'
-import RightPanel from '@/components/panels/RightPanel'
 import PanelDivider from '@/components/panels/PanelDivider'
+import TabBar, { type AppTab } from '@/components/tabs/TabBar'
+import MindmapTab from '@/components/tabs/MindmapTab'
+import ChecklistTab from '@/components/tabs/ChecklistTab'
+import WorkspaceTab from '@/components/tabs/WorkspaceTab'
 import { exportSVG, exportPNG } from '@/lib/export'
 import { useRouter } from 'next/navigation'
+
 const MIN_LEFT = 56
 const MAX_LEFT = 480
 const DEFAULT_LEFT = 280
@@ -28,6 +31,7 @@ export default function AppPage() {
   const [leftWidth, setLeftWidth] = useState(DEFAULT_LEFT)
   const [leftCollapsed, setLeftCollapsed] = useState(false)
   const [editorWidth, setEditorWidth] = useState(DEFAULT_EDITOR)
+  const [activeTab, setActiveTab] = useState<AppTab>('mindmap')
   const svgRef = useRef<SVGSVGElement>(null)
   const supabase = createClient()
   const router = useRouter()
@@ -164,27 +168,29 @@ export default function AppPage() {
       {/* Divider only when panel is expanded (icon strip is fixed, not resizable) */}
       {!leftCollapsed && <PanelDivider onDrag={handleLeftDividerDrag} />}
 
-      <div style={{ width: editorWidth, minWidth: editorWidth, maxWidth: editorWidth }} className="h-full">
-        <MiddlePanel
-          project={activeProject}
-          content={content}
-          isDirty={isDirty}
-          onContentChange={setContent}
-          onSaved={handleSaved}
-        />
-      </div>
+      {/* Right section: TabBar + tab content */}
+      <div className="flex-1 flex flex-col h-full overflow-hidden min-w-0">
+        <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
 
-      <PanelDivider onDrag={handleEditorDividerDrag} />
-
-      <div className="flex-1 h-full overflow-hidden">
-        <RightPanel
-          project={activeProject}
-          content={content}
-          svgRef={svgRef}
-          onExportSVG={handleExportSVG}
-          onExportPNG={handleExportPNG}
-          onProjectUpdated={handleProjectUpdated}
-        />
+        <div className="flex-1 overflow-hidden">
+          {activeTab === 'mindmap' && (
+            <MindmapTab
+              project={activeProject}
+              content={content}
+              isDirty={isDirty}
+              editorWidth={editorWidth}
+              svgRef={svgRef}
+              onContentChange={setContent}
+              onSaved={handleSaved}
+              onExportSVG={handleExportSVG}
+              onExportPNG={handleExportPNG}
+              onProjectUpdated={handleProjectUpdated}
+              onEditorDividerDrag={handleEditorDividerDrag}
+            />
+          )}
+          {activeTab === 'checklist' && <ChecklistTab project={activeProject} />}
+          {activeTab === 'workspace' && <WorkspaceTab project={activeProject} />}
+        </div>
       </div>
     </div>
   )
