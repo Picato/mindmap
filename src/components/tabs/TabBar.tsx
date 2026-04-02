@@ -1,11 +1,12 @@
 'use client'
 
-import { Network, ListChecks, FolderOpen } from 'lucide-react'
+import { Network, ListChecks, FolderOpen, Target } from 'lucide-react'
 
-export type AppTab = 'mindmap' | 'checklist' | 'workspace'
+export type AppTab = 'mindmap' | 'checklist' | 'workspace' | 'bantcare'
 
 const TABS = [
   { key: 'workspace' as const, label: 'Workspace',  Icon: FolderOpen },
+  { key: 'bantcare'  as const, label: 'BANT&CARE',  Icon: Target     },
   { key: 'mindmap'   as const, label: 'Mindmap',    Icon: Network    },
   { key: 'checklist' as const, label: 'Checklist',  Icon: ListChecks },
 ]

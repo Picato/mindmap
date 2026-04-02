@@ -11,7 +11,9 @@ import TabBar, { type AppTab } from '@/components/tabs/TabBar'
 import MindmapTab from '@/components/tabs/MindmapTab'
 import ChecklistTab from '@/components/tabs/ChecklistTab'
 import WorkspaceTab from '@/components/tabs/WorkspaceTab'
+import BantCareTab from '@/components/tabs/BantCareTab'
 import { exportSVG, exportPNG } from '@/lib/export'
+import { DEFAULT_BANTCARE_TEMPLATE } from '@/lib/bantcare'
 import { useRouter } from 'next/navigation'
 
 const MIN_LEFT = 56
@@ -32,6 +34,12 @@ export default function AppPage() {
   const [leftCollapsed, setLeftCollapsed] = useState(false)
   const [editorWidth, setEditorWidth] = useState(DEFAULT_EDITOR)
   const [activeTab, setActiveTab] = useState<AppTab>('mindmap')
+  const [bantCareContent, setBantCareContent] = useState('')
+  const [bantCareSavedContent, setBantCareSavedContent] = useState('')
+  const [bantCareSaving, setBantCareSaving] = useState(false)
+  const [bantCareSavedFlash, setBantCareSavedFlash] = useState(false)
+  const [bantCareEditorWidth, setBantCareEditorWidth] = useState(DEFAULT_EDITOR)
+  const [bantCareTemplate, setBantCareTemplate] = useState(DEFAULT_BANTCARE_TEMPLATE)
   const svgRef = useRef<SVGSVGElement>(null)
   const supabase = createClient()
   const router = useRouter()
@@ -50,6 +58,10 @@ export default function AppPage() {
         .single()
       if (prof) setProfile(prof as Profile)
 
+      // Fetch admin-configured BANT&CARE template (falls back to default if not set)
+      supabase.from('templates').select('content').eq('type', 'bantcare').maybeSingle()
+        .then(({ data }) => { if (data?.content) setBantCareTemplate(data.content) })
+
       const { data: projs } = await supabase
         .from('projects')
         .select('*')
@@ -63,6 +75,9 @@ export default function AppPage() {
           setActiveProject(first)
           setContent(first.content)
           setSavedContent(first.content)
+          const bc = first.bantcare_content ?? ''
+          setBantCareContent(bc)
+          setBantCareSavedContent(bc)
         }
       }
     }
@@ -86,6 +101,9 @@ export default function AppPage() {
     setActiveProject(project)
     setContent(project.content)
     setSavedContent(project.content)
+    const bc = project.bantcare_content ?? ''
+    setBantCareContent(bc)
+    setBantCareSavedContent(bc)
   }
 
   function handleProjectCreated(project: Project) {
@@ -110,6 +128,20 @@ export default function AppPage() {
     )
   }
 
+  async function handleBantCareSave() {
+    if (!activeProject) return
+    setBantCareSaving(true)
+    const { error } = await supabase.from('projects')
+      .update({ bantcare_content: bantCareContent, updated_at: new Date().toISOString() })
+      .eq('id', activeProject.id)
+    setBantCareSaving(false)
+    if (!error) {
+      setBantCareSavedContent(bantCareContent)
+      setBantCareSavedFlash(true)
+      setTimeout(() => setBantCareSavedFlash(false), 1500)
+    }
+  }
+
   function handleProjectUpdated(updated: Partial<Project>) {
     if (!activeProject) return
     const merged = { ...activeProject, ...updated }
@@ -131,6 +163,10 @@ export default function AppPage() {
 
   const handleEditorDividerDrag = useCallback((delta: number) => {
     setEditorWidth(w => Math.min(MAX_EDITOR, Math.max(MIN_EDITOR, w + delta)))
+  }, [])
+
+  const handleBantCareEditorDividerDrag = useCallback((delta: number) => {
+    setBantCareEditorWidth(w => Math.min(MAX_EDITOR, Math.max(MIN_EDITOR, w + delta)))
   }, [])
 
   if (!profile) {
@@ -190,6 +226,20 @@ export default function AppPage() {
           )}
           {activeTab === 'checklist' && <ChecklistTab project={activeProject} />}
           {activeTab === 'workspace' && <WorkspaceTab project={activeProject} />}
+          {activeTab === 'bantcare' && (
+            <BantCareTab
+              content={bantCareContent}
+              editorWidth={bantCareEditorWidth}
+              template={bantCareTemplate}
+              saving={bantCareSaving}
+              savedFlash={bantCareSavedFlash}
+              isDirty={bantCareContent !== bantCareSavedContent}
+              hasProject={!!activeProject}
+              onContentChange={setBantCareContent}
+              onSave={handleBantCareSave}
+              onEditorDividerDrag={handleBantCareEditorDividerDrag}
+            />
+          )}
         </div>
       </div>
     </div>

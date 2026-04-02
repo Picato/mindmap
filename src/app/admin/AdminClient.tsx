@@ -4,29 +4,32 @@ import dynamic from 'next/dynamic'
 import { useState, useRef } from 'react'
 import {
   Save, Loader2, Trash2, BrainCircuit, Users, LayoutTemplate, ArrowLeft,
-  FolderOpen, Plus, X, Check, ChevronDown, ChevronRight,
+  FolderOpen, Plus, X, Check, ChevronDown, ChevronRight, Target,
 } from 'lucide-react'
 import Link from 'next/link'
 import type { Profile, Template, UserGroup } from '@/types/database'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
+import { DEFAULT_BANTCARE_TEMPLATE } from '@/lib/bantcare'
 
 const CodeMirrorEditor = dynamic(() => import('@/components/editor/CodeMirrorEditor'), { ssr: false })
 const MarkmapRenderer = dynamic(() => import('@/components/mindmap/MarkmapRenderer'), { ssr: false })
+const BantCarePreviewPanel = dynamic(() => import('@/components/panels/BantCarePreviewPanel'), { ssr: false })
 
 type GroupWithMembers = UserGroup & { group_members: { user_id: string }[] }
 
 interface AdminClientProps {
   currentUserId: string
-  template: Template | null
+  mindmapTemplate: Template | null
+  bantcareTemplate: Template | null
   users: Profile[]
   groups: GroupWithMembers[]
 }
 
-export default function AdminClient({ currentUserId, template, users: initialUsers, groups: initialGroups }: AdminClientProps) {
-  const [activeTab, setActiveTab] = useState<'template' | 'users' | 'groups'>('template')
+export default function AdminClient({ currentUserId, mindmapTemplate, bantcareTemplate, users: initialUsers, groups: initialGroups }: AdminClientProps) {
+  const [activeTab, setActiveTab] = useState<'mindmap-template' | 'bantcare-template' | 'users' | 'groups'>('mindmap-template')
 
-  // ── Template tab ──────────────────────────────────────────
-  const [templateContent, setTemplateContent] = useState(template?.content ?? '')
+  // ── Mindmap Template tab ───────────────────────────────────
+  const [templateContent, setTemplateContent] = useState(mindmapTemplate?.content ?? '')
   const [saving, setSaving] = useState(false)
   const [savedFlash, setSavedFlash] = useState(false)
   const svgRef = useRef<SVGSVGElement>(null)
@@ -36,12 +39,31 @@ export default function AdminClient({ currentUserId, template, users: initialUse
     const res = await fetch('/api/admin/template', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content: templateContent, updatedBy: currentUserId }),
+      body: JSON.stringify({ content: templateContent, type: 'mindmap', updatedBy: currentUserId }),
     })
     setSaving(false)
     if (res.ok) {
       setSavedFlash(true)
       setTimeout(() => setSavedFlash(false), 1500)
+    }
+  }
+
+  // ── BANT&CARE Template tab ────────────────────────────────
+  const [bcTemplateContent, setBcTemplateContent] = useState(bantcareTemplate?.content ?? DEFAULT_BANTCARE_TEMPLATE)
+  const [bcSaving, setBcSaving] = useState(false)
+  const [bcSavedFlash, setBcSavedFlash] = useState(false)
+
+  async function saveBantCareTemplate() {
+    setBcSaving(true)
+    const res = await fetch('/api/admin/template', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: bcTemplateContent, type: 'bantcare', updatedBy: currentUserId }),
+    })
+    setBcSaving(false)
+    if (res.ok) {
+      setBcSavedFlash(true)
+      setTimeout(() => setBcSavedFlash(false), 1500)
     }
   }
 
@@ -196,9 +218,10 @@ export default function AdminClient({ currentUserId, template, users: initialUse
       {/* Tabs */}
       <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 px-6 flex gap-1">
         {([
-          { key: 'template', label: 'Template', icon: <LayoutTemplate className="w-4 h-4" /> },
-          { key: 'users', label: `Users (${users.length})`, icon: <Users className="w-4 h-4" /> },
-          { key: 'groups', label: `Teams (${groups.length})`, icon: <FolderOpen className="w-4 h-4" /> },
+          { key: 'mindmap-template',  label: 'Mindmap Template',   icon: <LayoutTemplate className="w-4 h-4" /> },
+          { key: 'bantcare-template', label: 'BANT&CARE Template',  icon: <Target className="w-4 h-4" /> },
+          { key: 'users',             label: `Users (${users.length})`, icon: <Users className="w-4 h-4" /> },
+          { key: 'groups',            label: `Teams (${groups.length})`, icon: <FolderOpen className="w-4 h-4" /> },
         ] as const).map(tab => (
           <button
             key={tab.key}
@@ -218,12 +241,12 @@ export default function AdminClient({ currentUserId, template, users: initialUse
       {/* Content */}
       <div className="flex-1 overflow-hidden">
 
-        {/* ── Template tab ── */}
-        {activeTab === 'template' && (
+        {/* ── Mindmap Template tab ── */}
+        {activeTab === 'mindmap-template' && (
           <div className="flex h-full" style={{ height: 'calc(100vh - 108px)' }}>
             <div className="flex flex-col w-1/2 border-r border-gray-200 dark:border-gray-800">
               <div className="flex items-center justify-between px-4 py-2 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 shrink-0">
-                <span className="text-gray-700 dark:text-gray-300 text-sm font-medium">Template Editor</span>
+                <span className="text-gray-700 dark:text-gray-300 text-sm font-medium">Mindmap Template Editor</span>
                 <button
                   onClick={saveTemplate}
                   disabled={saving}
@@ -243,6 +266,36 @@ export default function AdminClient({ currentUserId, template, users: initialUse
               </div>
               <div className="flex-1 overflow-hidden">
                 <MarkmapRenderer content={templateContent} svgRef={svgRef} />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── BANT&CARE Template tab ── */}
+        {activeTab === 'bantcare-template' && (
+          <div className="flex h-full" style={{ height: 'calc(100vh - 108px)' }}>
+            <div className="flex flex-col w-1/2 border-r border-gray-200 dark:border-gray-800">
+              <div className="flex items-center justify-between px-4 py-2 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 shrink-0">
+                <span className="text-gray-700 dark:text-gray-300 text-sm font-medium">BANT&amp;CARE Template Editor</span>
+                <button
+                  onClick={saveBantCareTemplate}
+                  disabled={bcSaving}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg transition-colors"
+                >
+                  {bcSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                  {bcSavedFlash ? 'Saved!' : 'Save Template'}
+                </button>
+              </div>
+              <div className="flex-1 overflow-hidden">
+                <CodeMirrorEditor value={bcTemplateContent} onChange={setBcTemplateContent} />
+              </div>
+            </div>
+            <div className="flex flex-col w-1/2">
+              <div className="px-4 py-2 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 shrink-0">
+                <span className="text-gray-700 dark:text-gray-300 text-sm font-medium">Preview</span>
+              </div>
+              <div className="flex-1 overflow-hidden">
+                <BantCarePreviewPanel content={bcTemplateContent} />
               </div>
             </div>
           </div>

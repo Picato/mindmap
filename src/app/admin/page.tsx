@@ -20,8 +20,9 @@ export default async function AdminPage() {
   const profile = profileData as Profile | null
   if (profile?.role !== 'admin') redirect('/app')
 
-  const [{ data: template }, { data: users }, { data: groups }] = await Promise.all([
-    supabase.from('templates').select('*').limit(1).single(),
+  const [{ data: mindmapTemplate }, { data: bantcareTemplate }, { data: users }, { data: groups }] = await Promise.all([
+    supabase.from('templates').select('*').eq('type', 'mindmap').maybeSingle(),
+    supabase.from('templates').select('*').eq('type', 'bantcare').maybeSingle(),
     supabase.from('profiles').select('*').order('created_at', { ascending: false }),
     supabase
       .from('user_groups')
@@ -32,7 +33,8 @@ export default async function AdminPage() {
   return (
     <AdminClient
       currentUserId={user.id}
-      template={template}
+      mindmapTemplate={mindmapTemplate}
+      bantcareTemplate={bantcareTemplate}
       users={(users ?? []) as Profile[]}
       groups={(groups ?? []) as (UserGroup & { group_members: { user_id: string }[] })[]}
     />

@@ -26,16 +26,19 @@ create table public.projects (
   updated_at timestamptz default now()
 );
 
--- Templates table (only 1 row, managed by admin)
+-- Templates table (one row per type: 'mindmap' | 'bantcare', managed by admin)
 create table public.templates (
   id uuid default gen_random_uuid() primary key,
+  type text not null default 'mindmap',
   content text not null default '# Template\n## Section 1\n### Item 1\n### Item 2\n## Section 2\n### Item 1',
   updated_at timestamptz default now(),
-  updated_by uuid references public.profiles(id)
+  updated_by uuid references public.profiles(id),
+  unique (type)
 );
 
--- Insert default template row
-insert into public.templates (content) values (
+-- Insert default mindmap template row
+insert into public.templates (type, content) values (
+  'mindmap',
   '# Project Mindmap' || E'\n' ||
   '## Goals' || E'\n' ||
   '### Primary Goal' || E'\n' ||
@@ -48,6 +51,12 @@ insert into public.templates (content) values (
   '### Team' || E'\n' ||
   '### Tools'
 );
+
+-- ============================================================
+-- Migration (run this if you already have the templates table):
+-- ALTER TABLE public.templates ADD COLUMN IF NOT EXISTS type text NOT NULL DEFAULT 'mindmap';
+-- ALTER TABLE public.templates ADD CONSTRAINT templates_type_key UNIQUE (type);
+-- ============================================================
 
 -- ============================================================
 -- User groups

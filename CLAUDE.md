@@ -28,12 +28,14 @@ Next.js 16 uses `proxy.ts` (not `middleware.ts`) and exports a `proxy` function 
 
 ### Main editor: `src/app/app/page.tsx`
 
-The single-page editor is a client component (`'use client'` + `export const dynamic = 'force-dynamic'`) with a 3-panel layout managed via controlled widths:
+The single-page editor is a client component (`'use client'` + `export const dynamic = 'force-dynamic'`). It has a left sidebar + tab area layout:
 - **LeftPanel** — project list sidebar (collapsible to icon strip), handles project CRUD directly via Supabase client
-- **MiddlePanel** — markdown editor toolbar + CodeMirror; saves via Supabase client; `Cmd/Ctrl+S` shortcut
-- **RightPanel** — markmap SVG preview + export/share overlays
+- **TabBar** — four tabs: Workspace, BANT&CARE, Mindmap, Checklist
+- **MindmapTab** — two-panel: MiddlePanel (CodeMirror editor + toolbar) + RightPanel (markmap SVG preview + export/share)
+- **BantCareTab** — two-panel: BantCareEditorPanel (CodeMirror + Template/Save toolbar) + BantCarePreviewPanel (structured HTML layout)
+- **WorkspaceTab** / **ChecklistTab** — per-project workspace and checklist views
 
-State flows top-down from `AppPage`: content, project selection, and panel widths all live there.
+State flows top-down from `AppPage`: content, project selection, panel widths, and BANT&CARE state all live there. Each tab has its own resizable divider. Both Mindmap and BANT&CARE content save to the active project via `Cmd/Ctrl+S` or the Save button.
 
 ### Browser-only components
 
@@ -47,10 +49,19 @@ Two `useEffect`s: the first (empty deps) creates the `Markmap` instance; the sec
 
 Email/password only, restricted to `@fpt.com` domain (enforced in both `src/app/auth/page.tsx` and `src/app/api/admin/users/route.ts`). The `ALLOWED_DOMAIN` constant appears in both files and must be kept in sync. Callback route at `src/app/auth/callback/route.ts` exchanges the code for a session; invited users land at `/auth/set-password`.
 
+### BANT&CARE: `src/lib/bantcare.ts`
+
+- `DEFAULT_BANTCARE_TEMPLATE` — structured markdown with `# Key: Value` metadata fields + `## Section` blocks
+- `parseBantCare(markdown)` — extracts 14 metadata fields and 8 section blocks (Budget, Authority, Need, Timeline, Competitors, Advantages, Risk, Expertise)
+- `generateBantCareHTML(markdown)` — produces a fully-styled HTML string: navy header, info tile bar, two-column CSS Grid body (BANT left / CARE right) with equal-height rows
+- Authority table rows get `bc-promoter`/`bc-neutral`/`bc-detractor` classes; `[TIP]`/`[Expectation]` markers render in red bold
+- CSS classes are in `src/app/globals.css` under the `bc-*` namespace
+- BANT&CARE content is saved per project in the `projects.bantcare_content` column (requires migration below)
+
 ### Admin panel: `src/app/admin/`
 
-- `page.tsx` — server component that fetches template + users + groups, passes to `AdminClient`
-- `AdminClient.tsx` — client component with three tabs: Template editor, Users table (invite/delete/alias), Teams (groups + members)
+- `page.tsx` — server component that fetches templates + users + groups, passes to `AdminClient`
+- `AdminClient.tsx` — client component with four tabs: Mindmap Template, BANT&CARE Template, Users (invite/delete/alias), Teams (groups + members)
 - Admin operations use API routes that re-verify the caller's `admin` role server-side
 
 ### API routes
@@ -60,7 +71,7 @@ All admin API routes (`/api/admin/*`) use the same pattern: verify session + `ad
 - `POST /api/admin/users` — invite user via `adminClient.auth.admin.inviteUserByEmail`
 - `DELETE /api/admin/users` — delete user via service role (cannot delete self)
 - `PATCH /api/admin/users` — update alias
-- `POST/DELETE /api/admin/template` — CRUD the single global template row
+- `POST/DELETE /api/admin/template` — CRUD template rows; accepts `type` field (`'mindmap'` or `'bantcare'`); upserts by type using UNIQUE constraint
 - `POST/DELETE /api/admin/groups` — create/delete user groups
 - `POST/DELETE /api/admin/groups/members` — add/remove group members
 
@@ -76,6 +87,8 @@ Each project has a pre-generated `share_token` UUID. Toggling `is_shared` on a p
 
 Manual types — no generated Supabase types. Types: `Profile`, `Project`, `Template`, `UserGroup`, `GroupMember`. The `Database` type shape is defined for documentation but not passed as a generic to Supabase clients.
 
+`Project` includes `bantcare_content: string` (saved per project alongside `content`).
+
 ## Environment Variables
 
 ```
@@ -88,5 +101,14 @@ SUPABASE_SERVICE_ROLE_KEY=
 
 1. Add real Supabase credentials to `.env.local`
 2. Run `supabase/schema.sql` in the Supabase SQL editor
-3. Promote an admin: `UPDATE public.profiles SET role = 'admin' WHERE email = 'your@email.com';`
-4. Configure email auth in Supabase → Auth → Providers (restrict to `fpt.com` domain in SMTP settings or rely on app-level enforcement)
+3. Run pending migrations:
+   ```sql
+   -- BANT&CARE content per project
+   ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS bantcare_content text NOT NULL DEFAULT '';
+
+   -- Multi-type templates (mindmap + bantcare)
+   ALTER TABLE public.templates ADD COLUMN IF NOT EXISTS type text NOT NULL DEFAULT 'mindmap';
+   ALTER TABLE public.templates ADD CONSTRAINT templates_type_key UNIQUE (type);
+   ```
+4. Promote an admin: `UPDATE public.profiles SET role = 'admin' WHERE email = 'your@email.com';`
+5. Configure email auth in Supabase → Auth → Providers (restrict to `fpt.com` domain in SMTP settings or rely on app-level enforcement)

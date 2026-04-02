@@ -15,6 +15,7 @@ export interface Project {
   user_id: string
   name: string
   content: string
+  bantcare_content: string
   is_shared: boolean
   share_token: string
   created_at: string

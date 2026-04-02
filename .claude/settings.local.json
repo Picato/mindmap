@@ -12,7 +12,15 @@
       "Bash(npx create-next-app@latest /tmp/markmap-app --typescript --tailwind --app --src-dir --import-alias \"@/*\" --no-eslint --yes)",
       "Bash(npm install @supabase/supabase-js @supabase/ssr @codemirror/view @codemirror/state @codemirror/lang-markdown @codemirror/theme-one-dark codemirror markmap-lib markmap-view markmap-common lucide-react)",
       "Bash(npm run build)",
-      "Bash(npm install)"
+      "Bash(npm install)",
+      "Bash(npm install:*)",
+      "Bash(export PATH=\"/usr/local/bin:/opt/homebrew/bin:/opt/homebrew/opt/node/bin:$PATH\")",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(PATH=/usr/local/bin:$PATH npx tsc --noEmit)",
+      "Bash(xargs kill:*)",
+      "Bash(npx tsc:*)",
+      "Bash(/usr/local/bin/npx tsc:*)",
+      "Bash(export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\")"
     ]
   }
 }
