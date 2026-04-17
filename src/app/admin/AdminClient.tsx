@@ -4,10 +4,10 @@ import dynamic from 'next/dynamic'
 import { useState, useRef } from 'react'
 import {
   Save, Loader2, Trash2, BrainCircuit, Users, LayoutTemplate, ArrowLeft,
-  FolderOpen, Plus, X, Check, ChevronDown, ChevronRight, Target, Mail,
+  Plus, Check, Target, Mail,
 } from 'lucide-react'
 import Link from 'next/link'
-import type { Profile, Template, UserGroup } from '@/types/database'
+import type { Profile, Template } from '@/types/database'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { DEFAULT_BANTCARE_TEMPLATE } from '@/lib/bantcare'
 
@@ -15,9 +15,16 @@ const CodeMirrorEditor = dynamic(() => import('@/components/editor/CodeMirrorEdi
 const MarkmapRenderer = dynamic(() => import('@/components/mindmap/MarkmapRenderer'), { ssr: false })
 const BantCarePreviewPanel = dynamic(() => import('@/components/panels/BantCarePreviewPanel'), { ssr: false })
 
-type GroupWithMembers = UserGroup & { group_members: { user_id: string }[] }
-
 const JOB_TITLES = ['VP of Sales', 'Sales', 'Presales', 'DM', 'CDO', 'Chief Architect'] as const
+const ACCOUNT_ROLES = ['user', 'admin'] as const
+
+function normalizeName(value: string | null | undefined) {
+  return value?.trim() ?? ''
+}
+
+function normalizeJobTitle(value: string | null | undefined) {
+  return value ?? ''
+}
 
 interface AdminClientProps {
   currentUserId: string
@@ -25,14 +32,13 @@ interface AdminClientProps {
   bantcareTemplate: Template | null
   users: Profile[]
   confirmedAt: Record<string, string | null>
-  groups: GroupWithMembers[]
 }
 
 export default function AdminClient({
   currentUserId, mindmapTemplate, bantcareTemplate,
-  users: initialUsers, confirmedAt: initialConfirmedAt, groups: initialGroups,
+  users: initialUsers, confirmedAt: initialConfirmedAt,
 }: AdminClientProps) {
-  const [activeTab, setActiveTab] = useState<'mindmap-template' | 'bantcare-template' | 'users' | 'groups'>('mindmap-template')
+  const [activeTab, setActiveTab] = useState<'mindmap-template' | 'bantcare-template' | 'users'>('mindmap-template')
 
   // ── Mindmap Template tab ──────────────────────────────────
   const [templateContent, setTemplateContent] = useState(mindmapTemplate?.content ?? '')
@@ -76,18 +82,24 @@ export default function AdminClient({
   const [nameEdits, setNameEdits] = useState<Record<string, string>>(() =>
     Object.fromEntries(initialUsers.map(u => [u.id, u.full_name ?? '']))
   )
-  const [roleEdits, setRoleEdits] = useState<Record<string, string>>(() =>
+  const [jobTitleEdits, setJobTitleEdits] = useState<Record<string, string>>(() =>
     Object.fromEntries(initialUsers.map(u => [u.id, u.job_title ?? '']))
+  )
+  const [roleEdits, setRoleEdits] = useState<Record<string, Profile['role']>>(() =>
+    Object.fromEntries(initialUsers.map(u => [u.id, u.role]))
   )
   const [userSaving, setUserSaving] = useState<Record<string, boolean>>({})
   const [userSaved, setUserSaved] = useState<Record<string, boolean>>({})
+  const [userErrors, setUserErrors] = useState<Record<string, string | null>>({})
   const [reInviting, setReInviting] = useState<Record<string, boolean>>({})
   const [reInvited, setReInvited] = useState<Record<string, boolean>>({})
+  const [editingUsers, setEditingUsers] = useState<Record<string, boolean>>({})
 
   // add new user form
   const [newName, setNewName] = useState('')
   const [newEmail, setNewEmail] = useState('')
-  const [newRole, setNewRole] = useState('')
+  const [newJobTitle, setNewJobTitle] = useState('')
+  const [newAccountRole, setNewAccountRole] = useState<Profile['role']>('user')
   const [adding, setAdding] = useState(false)
   const [addResult, setAddResult] = useState<{ ok: boolean; msg: string } | null>(null)
 
@@ -98,7 +110,12 @@ export default function AdminClient({
     const res = await fetch('/api/admin/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: newEmail.trim(), name: newName.trim() || undefined, jobTitle: newRole || undefined }),
+      body: JSON.stringify({
+        email: newEmail.trim(),
+        name: newName.trim() || undefined,
+        role: newAccountRole,
+        jobTitle: newJobTitle || undefined,
+      }),
     })
     setAdding(false)
     if (res.ok) {
@@ -107,11 +124,12 @@ export default function AdminClient({
         const created = data.user as Profile
         setUsers(prev => [created, ...prev])
         setNameEdits(prev => ({ ...prev, [created.id]: created.full_name ?? '' }))
-        setRoleEdits(prev => ({ ...prev, [created.id]: created.job_title ?? '' }))
+        setJobTitleEdits(prev => ({ ...prev, [created.id]: created.job_title ?? '' }))
+        setRoleEdits(prev => ({ ...prev, [created.id]: created.role }))
         setConfirmedAt(prev => ({ ...prev, [created.id]: null }))
       }
       setAddResult({ ok: true, msg: `Invitation sent to ${newEmail.trim()}` })
-      setNewName(''); setNewEmail(''); setNewRole('')
+      setNewName(''); setNewEmail(''); setNewJobTitle(''); setNewAccountRole('user')
     } else {
       const data = await res.json()
       setAddResult({ ok: false, msg: data.error ?? 'Failed to send invitation.' })
@@ -121,19 +139,31 @@ export default function AdminClient({
 
   async function saveUser(userId: string) {
     setUserSaving(prev => ({ ...prev, [userId]: true }))
-    await fetch('/api/admin/users', {
+    setUserErrors(prev => ({ ...prev, [userId]: null }))
+    const res = await fetch('/api/admin/users', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         userId,
         fullName: nameEdits[userId]?.trim() || null,
-        jobTitle: roleEdits[userId] || null,
+        role: roleEdits[userId],
+        jobTitle: jobTitleEdits[userId] || null,
       }),
     })
-    setUsers(prev => prev.map(u => u.id === userId
-      ? { ...u, full_name: nameEdits[userId]?.trim() || null, job_title: roleEdits[userId] || null }
-      : u
-    ))
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null)
+      setUserSaving(prev => ({ ...prev, [userId]: false }))
+      setUserErrors(prev => ({ ...prev, [userId]: data?.error ?? 'Failed to save changes.' }))
+      return
+    }
+
+    const data = await res.json()
+    const updatedUser = data.user as Profile
+    setUsers(prev => prev.map(u => u.id === userId ? updatedUser : u))
+    setNameEdits(prev => ({ ...prev, [userId]: updatedUser.full_name ?? '' }))
+    setJobTitleEdits(prev => ({ ...prev, [userId]: updatedUser.job_title ?? '' }))
+    setRoleEdits(prev => ({ ...prev, [userId]: updatedUser.role }))
     setUserSaving(prev => ({ ...prev, [userId]: false }))
     setUserSaved(prev => ({ ...prev, [userId]: true }))
     setTimeout(() => setUserSaved(prev => ({ ...prev, [userId]: false })), 1500)
@@ -163,76 +193,20 @@ export default function AdminClient({
 
   const userToDelete = users.find(u => u.id === deleteUserId)
 
-  // ── Groups tab ────────────────────────────────────────────
-  const [groups, setGroups] = useState<GroupWithMembers[]>(initialGroups)
-  const [newGroupName, setNewGroupName] = useState('')
-  const [creatingGroup, setCreatingGroup] = useState(false)
-  const [expandedGroupId, setExpandedGroupId] = useState<string | null>(null)
-  const [deleteGroupId, setDeleteGroupId] = useState<string | null>(null)
-  const [addUserPickerGroupId, setAddUserPickerGroupId] = useState<string | null>(null)
-
-  async function createGroup() {
-    if (!newGroupName.trim()) return
-    setCreatingGroup(true)
-    const res = await fetch('/api/admin/groups', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: newGroupName.trim() }),
-    })
-    setCreatingGroup(false)
-    if (res.ok) {
-      const created = await res.json()
-      setGroups(prev => [...prev, { ...created, group_members: [] }])
-      setNewGroupName('')
-    }
-  }
-
-  async function deleteGroup(groupId: string) {
-    const res = await fetch('/api/admin/groups', {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ groupId }),
-    })
-    if (res.ok) {
-      setGroups(prev => prev.filter(g => g.id !== groupId))
-      if (expandedGroupId === groupId) setExpandedGroupId(null)
-    }
-    setDeleteGroupId(null)
-  }
-
-  async function addMember(groupId: string, userId: string) {
-    const res = await fetch('/api/admin/groups/members', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ groupId, userId }),
-    })
-    if (res.ok) {
-      setGroups(prev => prev.map(g =>
-        g.id === groupId ? { ...g, group_members: [...g.group_members, { user_id: userId }] } : g
-      ))
-    }
-    setAddUserPickerGroupId(null)
-  }
-
-  async function removeMember(groupId: string, userId: string) {
-    const res = await fetch('/api/admin/groups/members', {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ groupId, userId }),
-    })
-    if (res.ok) {
-      setGroups(prev => prev.map(g =>
-        g.id === groupId
-          ? { ...g, group_members: g.group_members.filter(m => m.user_id !== userId) }
-          : g
-      ))
-    }
-  }
-
-  const groupToDelete = groups.find(g => g.id === deleteGroupId)
-
   // shared styles
   const fieldCls = 'px-2 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-indigo-500'
+
+  function enableUserEditing(userId: string) {
+    setEditingUsers(prev => ({ ...prev, [userId]: true }))
+  }
+
+  function isUserDirty(user: Profile) {
+    return (
+      normalizeName(nameEdits[user.id]) !== normalizeName(user.full_name) ||
+      normalizeJobTitle(jobTitleEdits[user.id]) !== normalizeJobTitle(user.job_title) ||
+      (roleEdits[user.id] ?? user.role) !== user.role
+    )
+  }
 
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-gray-950 flex flex-col">
@@ -254,7 +228,6 @@ export default function AdminClient({
           { key: 'mindmap-template',  label: 'Mindmap Template',        icon: <LayoutTemplate className="w-4 h-4" /> },
           { key: 'bantcare-template', label: 'BANT&CARE Template',       icon: <Target className="w-4 h-4" /> },
           { key: 'users',             label: `Users (${users.length})`,  icon: <Users className="w-4 h-4" /> },
-          { key: 'groups',            label: `Teams (${groups.length})`, icon: <FolderOpen className="w-4 h-4" /> },
         ] as const).map(tab => (
           <button
             key={tab.key}
@@ -357,10 +330,20 @@ export default function AdminClient({
                   />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs text-gray-500 dark:text-gray-400">Role</label>
-                  <select value={newRole} onChange={e => setNewRole(e.target.value)} className={`${fieldCls} w-44 cursor-pointer`}>
-                    <option value="">— Select role —</option>
+                  <label className="text-xs text-gray-500 dark:text-gray-400">Job Title</label>
+                  <select value={newJobTitle} onChange={e => setNewJobTitle(e.target.value)} className={`${fieldCls} w-44 cursor-pointer`}>
+                    <option value="">— Select job title —</option>
                     {JOB_TITLES.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-gray-500 dark:text-gray-400">Access</label>
+                  <select
+                    value={newAccountRole}
+                    onChange={e => setNewAccountRole(e.target.value as Profile['role'])}
+                    className={`${fieldCls} w-32 cursor-pointer`}
+                  >
+                    {ACCOUNT_ROLES.map(role => <option key={role} value={role}>{role}</option>)}
                   </select>
                 </div>
                 <button
@@ -386,7 +369,8 @@ export default function AdminClient({
                   <tr className="border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
                     <th className="text-left text-gray-500 dark:text-gray-400 font-medium px-4 py-3">Name</th>
                     <th className="text-left text-gray-500 dark:text-gray-400 font-medium px-4 py-3">Email</th>
-                    <th className="text-left text-gray-500 dark:text-gray-400 font-medium px-4 py-3">Role</th>
+                    <th className="text-left text-gray-500 dark:text-gray-400 font-medium px-4 py-3">Job Title</th>
+                    <th className="text-left text-gray-500 dark:text-gray-400 font-medium px-4 py-3">Access</th>
                     <th className="text-left text-gray-500 dark:text-gray-400 font-medium px-4 py-3">Status</th>
                     <th className="text-left text-gray-500 dark:text-gray-400 font-medium px-4 py-3">Actions</th>
                   </tr>
@@ -395,6 +379,8 @@ export default function AdminClient({
                   {users.map(user => {
                     const isConfirmed = !!confirmedAt[user.id]
                     const isSelf = user.id === currentUserId
+                    const isEditing = !!editingUsers[user.id]
+                    const isDirty = isUserDirty(user)
                     return (
                       <tr key={user.id} className="border-b border-gray-100 dark:border-gray-800/50 hover:bg-gray-50 dark:hover:bg-gray-800/20 transition-colors">
 
@@ -407,9 +393,16 @@ export default function AdminClient({
                             <input
                               type="text"
                               value={nameEdits[user.id] ?? ''}
-                              onChange={e => setNameEdits(prev => ({ ...prev, [user.id]: e.target.value }))}
+                              onClick={() => enableUserEditing(user.id)}
+                              onFocus={() => enableUserEditing(user.id)}
+                              onChange={e => {
+                                enableUserEditing(user.id)
+                                setNameEdits(prev => ({ ...prev, [user.id]: e.target.value }))
+                              }}
                               placeholder="Enter name…"
-                              className={`${fieldCls} w-36`}
+                              readOnly={!isEditing}
+                              aria-readonly={!isEditing}
+                              className={`${fieldCls} w-36 ${!isEditing ? 'cursor-pointer border-transparent bg-gray-100 text-gray-500 dark:bg-gray-800/60 dark:text-gray-400 focus:ring-0' : ''}`}
                             />
                           </div>
                         </td>
@@ -419,16 +412,55 @@ export default function AdminClient({
                           {user.email}
                         </td>
 
-                        {/* Role dropdown */}
+                        {/* Job title dropdown */}
                         <td className="px-4 py-2.5">
-                          <select
-                            value={roleEdits[user.id] ?? ''}
-                            onChange={e => setRoleEdits(prev => ({ ...prev, [user.id]: e.target.value }))}
-                            className={`${fieldCls} w-40 cursor-pointer`}
-                          >
-                            <option value="">— Role —</option>
-                            {JOB_TITLES.map(t => <option key={t} value={t}>{t}</option>)}
-                          </select>
+                          {isEditing ? (
+                            <select
+                              value={jobTitleEdits[user.id] ?? ''}
+                              onFocus={() => enableUserEditing(user.id)}
+                              onChange={e => {
+                                enableUserEditing(user.id)
+                                setJobTitleEdits(prev => ({ ...prev, [user.id]: e.target.value }))
+                              }}
+                              className={`${fieldCls} w-40 cursor-pointer`}
+                            >
+                              <option value="">— Job title —</option>
+                              {JOB_TITLES.map(t => <option key={t} value={t}>{t}</option>)}
+                            </select>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => enableUserEditing(user.id)}
+                              className={`${fieldCls} w-40 cursor-pointer border-transparent bg-gray-100 text-left text-gray-500 dark:bg-gray-800/60 dark:text-gray-400`}
+                            >
+                              {jobTitleEdits[user.id] || '— Job title —'}
+                            </button>
+                          )}
+                        </td>
+
+                        {/* Account role dropdown */}
+                        <td className="px-4 py-2.5">
+                          {isEditing ? (
+                            <select
+                              value={roleEdits[user.id] ?? 'user'}
+                              onFocus={() => enableUserEditing(user.id)}
+                              onChange={e => {
+                                enableUserEditing(user.id)
+                                setRoleEdits(prev => ({ ...prev, [user.id]: e.target.value as Profile['role'] }))
+                              }}
+                              className={`${fieldCls} w-28 cursor-pointer`}
+                            >
+                              {ACCOUNT_ROLES.map(role => <option key={role} value={role}>{role}</option>)}
+                            </select>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => enableUserEditing(user.id)}
+                              className={`${fieldCls} w-28 cursor-pointer border-transparent bg-gray-100 text-left text-gray-500 dark:bg-gray-800/60 dark:text-gray-400`}
+                            >
+                              {roleEdits[user.id] ?? 'user'}
+                            </button>
+                          )}
                         </td>
 
                         {/* Status: signed-up date or Send Invite button */}
@@ -458,9 +490,13 @@ export default function AdminClient({
                           <div className="flex items-center gap-1.5">
                             <button
                               onClick={() => saveUser(user.id)}
-                              disabled={userSaving[user.id]}
+                              disabled={userSaving[user.id] || !isDirty}
                               title="Save changes"
-                              className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg transition-colors"
+                              className={`flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-white rounded-lg transition-colors ${
+                                userSaving[user.id] || !isDirty
+                                  ? 'bg-gray-300 dark:bg-gray-700 cursor-not-allowed'
+                                  : 'bg-indigo-600 hover:bg-indigo-700'
+                              }`}
                             >
                               {userSaving[user.id]
                                 ? <Loader2 className="w-3 h-3 animate-spin" />
@@ -478,6 +514,9 @@ export default function AdminClient({
                               <Trash2 className="w-4 h-4" />
                             </button>
                           </div>
+                          {userErrors[user.id] && (
+                            <p className="mt-1 text-xs text-red-500 dark:text-red-400">{userErrors[user.id]}</p>
+                          )}
                         </td>
                       </tr>
                     )
@@ -491,113 +530,6 @@ export default function AdminClient({
           </div>
         )}
 
-        {/* ── Groups tab ── */}
-        {activeTab === 'groups' && (
-          <div className="p-6 overflow-auto" style={{ height: 'calc(100vh - 108px)' }}>
-            <div className="mb-6 flex items-center gap-3">
-              <input
-                type="text"
-                value={newGroupName}
-                onChange={e => setNewGroupName(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') createGroup() }}
-                placeholder="New team name…"
-                className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 w-64"
-              />
-              <button
-                onClick={createGroup}
-                disabled={creatingGroup || !newGroupName.trim()}
-                className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg transition-colors"
-              >
-                {creatingGroup ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-                Create Team
-              </button>
-            </div>
-
-            <div className="flex flex-col gap-3">
-              {groups.map(group => {
-                const memberIds = new Set(group.group_members.map(m => m.user_id))
-                const members = users.filter(u => memberIds.has(u.id))
-                const nonMembers = users.filter(u => !memberIds.has(u.id))
-                const isExpanded = expandedGroupId === group.id
-                const isPickerOpen = addUserPickerGroupId === group.id
-
-                return (
-                  <div key={group.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
-                    <div
-                      className="flex items-center gap-3 px-4 py-3 cursor-pointer select-none hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors"
-                      onClick={() => setExpandedGroupId(isExpanded ? null : group.id)}
-                    >
-                      {isExpanded
-                        ? <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
-                        : <ChevronRight className="w-4 h-4 text-gray-400 shrink-0" />}
-                      <FolderOpen className="w-4 h-4 text-indigo-500 shrink-0" />
-                      <span className="text-gray-900 dark:text-white font-medium text-sm">{group.name}</span>
-                      <span className="ml-1 text-xs text-gray-400 dark:text-gray-500">{members.length} member{members.length !== 1 ? 's' : ''}</span>
-                      <button
-                        onClick={e => { e.stopPropagation(); setDeleteGroupId(group.id) }}
-                        title="Delete team"
-                        className="ml-auto p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-
-                    {isExpanded && (
-                      <div className="border-t border-gray-100 dark:border-gray-800 px-4 py-3">
-                        {members.length > 0 ? (
-                          <div className="flex flex-wrap gap-2 mb-3">
-                            {members.map(u => (
-                              <div key={u.id} className="flex items-center gap-1.5 px-2 py-1 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-700 rounded-lg text-xs text-indigo-700 dark:text-indigo-300">
-                                <span>{u.full_name ?? u.email}</span>
-                                <button onClick={() => removeMember(group.id, u.id)} title="Remove from group"
-                                  className="text-indigo-400 hover:text-red-500 transition-colors">
-                                  <X className="w-3 h-3" />
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">No members yet.</p>
-                        )}
-
-                        {nonMembers.length > 0 && (
-                          <div className="relative">
-                            {isPickerOpen ? (
-                              <div className="flex flex-col gap-1 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-2 max-h-40 overflow-y-auto">
-                                {nonMembers.map(u => (
-                                  <button key={u.id} onClick={() => addMember(group.id, u.id)}
-                                    className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-left hover:bg-indigo-50 dark:hover:bg-indigo-900/30 text-xs text-gray-700 dark:text-gray-300 transition-colors">
-                                    <div className="w-5 h-5 rounded-full bg-indigo-600 flex items-center justify-center text-white text-xs shrink-0">
-                                      {(u.full_name ?? u.email ?? 'U')[0].toUpperCase()}
-                                    </div>
-                                    <span>{u.full_name ?? u.email}</span>
-                                    <span className="ml-auto text-gray-400">{u.email}</span>
-                                  </button>
-                                ))}
-                                <button onClick={() => setAddUserPickerGroupId(null)}
-                                  className="mt-1 text-xs text-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 py-1">
-                                  Cancel
-                                </button>
-                              </div>
-                            ) : (
-                              <button onClick={() => setAddUserPickerGroupId(group.id)}
-                                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-indigo-600 dark:text-indigo-400 border border-indigo-300 dark:border-indigo-700 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors">
-                                <Plus className="w-3.5 h-3.5" />Add member
-                              </button>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-              {groups.length === 0 && (
-                <div className="text-center text-gray-400 dark:text-gray-500 py-12 text-sm">No teams yet. Create one above.</div>
-              )}
-            </div>
-          </div>
-        )}
       </div>
 
       <ConfirmDialog
@@ -608,15 +540,6 @@ export default function AdminClient({
         destructive
         onConfirm={() => deleteUserId && deleteUser(deleteUserId)}
         onCancel={() => setDeleteUserId(null)}
-      />
-      <ConfirmDialog
-        open={!!deleteGroupId}
-        title="Delete Team"
-        message={`Delete team "${groupToDelete?.name}"? This will not delete the users, only the team.`}
-        confirmLabel="Delete Team"
-        destructive
-        onConfirm={() => deleteGroupId && deleteGroup(deleteGroupId)}
-        onCancel={() => setDeleteGroupId(null)}
       />
     </div>
   )

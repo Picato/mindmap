@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createSupabaseAdmin } from '@supabase/supabase-js'
 import AdminClient from './AdminClient'
-import type { Profile, UserGroup } from '@/types/database'
+import type { Profile } from '@/types/database'
 
 export const dynamic = 'force-dynamic'
 
@@ -30,13 +30,11 @@ export default async function AdminPage() {
     { data: mindmapTemplate },
     { data: bantcareTemplate },
     { data: users },
-    { data: groups },
     { data: authUsersData },
   ] = await Promise.all([
     supabase.from('templates').select('*').eq('type', 'mindmap').maybeSingle(),
     supabase.from('templates').select('*').eq('type', 'bantcare').maybeSingle(),
     supabase.from('profiles').select('*').order('created_at', { ascending: false }),
-    supabase.from('user_groups').select('*, group_members(user_id)').order('created_at', { ascending: true }),
     adminSDK.auth.admin.listUsers({ perPage: 1000 }),
   ])
 
@@ -53,7 +51,6 @@ export default async function AdminPage() {
       bantcareTemplate={bantcareTemplate}
       users={(users ?? []) as Profile[]}
       confirmedAt={confirmedAt}
-      groups={(groups ?? []) as (UserGroup & { group_members: { user_id: string }[] })[]}
     />
   )
 }

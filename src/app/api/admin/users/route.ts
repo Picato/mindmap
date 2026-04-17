@@ -34,8 +34,11 @@ export async function POST(request: Request) {
   const { error, user } = await getAdminOrUnauthorized()
   if (error || !user) return error!
 
-  const { email, name, jobTitle } = await request.json()
+  const { email, name, role, jobTitle } = await request.json()
   if (!email) return NextResponse.json({ error: 'email required' }, { status: 400 })
+  if (role !== undefined && role !== 'user' && role !== 'admin') {
+    return NextResponse.json({ error: 'Invalid role' }, { status: 400 })
+  }
 
   const domain = (email as string).split('@')[1]
   if (domain !== ALLOWED_DOMAIN) {
@@ -54,6 +57,7 @@ export async function POST(request: Request) {
   if (inviteData?.user) {
     const updates: Record<string, unknown> = {}
     if (name) updates.full_name = name
+    if (role) updates.role = role
     if (jobTitle) updates.job_title = jobTitle
     if (Object.keys(updates).length > 0) {
       await adminSDK.from('profiles').update(updates).eq('id', inviteData.user.id)
@@ -87,24 +91,34 @@ export async function DELETE(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const { error, supabase } = await getAdminOrUnauthorized()
-  if (error || !supabase) return error!
+  const { error, user } = await getAdminOrUnauthorized()
+  if (error || !user) return error!
 
-  const { userId, alias, salesRoles, fullName, jobTitle } = await request.json()
+  const { userId, alias, salesRoles, fullName, role, jobTitle } = await request.json()
   if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 })
+  if (role !== undefined && role !== 'user' && role !== 'admin') {
+    return NextResponse.json({ error: 'Invalid role' }, { status: 400 })
+  }
+  if (userId === user.id && role === 'user') {
+    return NextResponse.json({ error: 'You cannot remove your own admin access.' }, { status: 400 })
+  }
 
   const updates: Record<string, unknown> = {}
   if (alias !== undefined) updates.alias = alias ?? null
   if (salesRoles !== undefined) updates.sales_roles = salesRoles ?? []
   if (fullName !== undefined) updates.full_name = fullName || null
+  if (role !== undefined) updates.role = role
   if (jobTitle !== undefined) updates.job_title = jobTitle || null
 
-  const { error: updateError } = await supabase
+  const adminSDK = makeAdminSDK()
+  const { data: updatedUser, error: updateError } = await adminSDK
     .from('profiles')
     .update(updates)
     .eq('id', userId)
+    .select('*')
+    .single()
 
   if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 })
 
-  return NextResponse.json({ success: true })
+  return NextResponse.json({ success: true, user: updatedUser })
 }
