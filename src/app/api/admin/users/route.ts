@@ -21,13 +21,20 @@ async function getAdminOrUnauthorized() {
   return { error: null, supabase, user }
 }
 
+function makeAdminSDK() {
+  return createSupabaseAdmin(
+    process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'https://placeholder.supabase.co',
+    process.env.SUPABASE_SERVICE_ROLE_KEY ?? 'placeholder-service-key'
+  )
+}
+
 const ALLOWED_DOMAIN = 'fpt.com'
 
 export async function POST(request: Request) {
-  const { error, supabase, user } = await getAdminOrUnauthorized()
-  if (error || !supabase || !user) return error!
+  const { error, user } = await getAdminOrUnauthorized()
+  if (error || !user) return error!
 
-  const { email } = await request.json()
+  const { email, name, jobTitle } = await request.json()
   if (!email) return NextResponse.json({ error: 'email required' }, { status: 400 })
 
   const domain = (email as string).split('@')[1]
@@ -35,18 +42,32 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: `Only @${ALLOWED_DOMAIN} email addresses are allowed.` }, { status: 400 })
   }
 
-  const adminClient = createSupabaseAdmin(
-    process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'https://placeholder.supabase.co',
-    process.env.SUPABASE_SERVICE_ROLE_KEY ?? 'placeholder-service-key'
-  )
-
+  const adminSDK = makeAdminSDK()
   const origin = request.headers.get('origin') ?? ''
-  const { error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(email, {
+  const { data: inviteData, error: inviteError } = await adminSDK.auth.admin.inviteUserByEmail(email, {
     redirectTo: `${origin}/auth/callback?next=/auth/set-password`,
   })
 
   if (inviteError) return NextResponse.json({ error: inviteError.message }, { status: 500 })
-  return NextResponse.json({ success: true })
+
+  // Update profile with name and job_title if provided
+  if (inviteData?.user) {
+    const updates: Record<string, unknown> = {}
+    if (name) updates.full_name = name
+    if (jobTitle) updates.job_title = jobTitle
+    if (Object.keys(updates).length > 0) {
+      await adminSDK.from('profiles').update(updates).eq('id', inviteData.user.id)
+    }
+  }
+
+  // Return the created profile so the client can add it to the list
+  let profile = null
+  if (inviteData?.user) {
+    const { data } = await adminSDK.from('profiles').select('*').eq('id', inviteData.user.id).single()
+    profile = data
+  }
+
+  return NextResponse.json({ success: true, user: profile })
 }
 
 export async function DELETE(request: Request) {
@@ -58,12 +79,8 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: 'Cannot delete yourself' }, { status: 400 })
   }
 
-  const adminClient = createSupabaseAdmin(
-    process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'https://placeholder.supabase.co',
-    process.env.SUPABASE_SERVICE_ROLE_KEY ?? 'placeholder-service-key'
-  )
-
-  const { error: deleteError } = await adminClient.auth.admin.deleteUser(userId)
+  const adminSDK = makeAdminSDK()
+  const { error: deleteError } = await adminSDK.auth.admin.deleteUser(userId)
   if (deleteError) return NextResponse.json({ error: deleteError.message }, { status: 500 })
 
   return NextResponse.json({ success: true })
@@ -73,12 +90,18 @@ export async function PATCH(request: Request) {
   const { error, supabase } = await getAdminOrUnauthorized()
   if (error || !supabase) return error!
 
-  const { userId, alias } = await request.json()
+  const { userId, alias, salesRoles, fullName, jobTitle } = await request.json()
   if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 })
+
+  const updates: Record<string, unknown> = {}
+  if (alias !== undefined) updates.alias = alias ?? null
+  if (salesRoles !== undefined) updates.sales_roles = salesRoles ?? []
+  if (fullName !== undefined) updates.full_name = fullName || null
+  if (jobTitle !== undefined) updates.job_title = jobTitle || null
 
   const { error: updateError } = await supabase
     .from('profiles')
-    .update({ alias: alias ?? null })
+    .update(updates)
     .eq('id', userId)
 
   if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 })

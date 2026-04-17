@@ -40,6 +40,12 @@ export default function AppPage() {
   const [bantCareSavedFlash, setBantCareSavedFlash] = useState(false)
   const [bantCareEditorWidth, setBantCareEditorWidth] = useState(DEFAULT_EDITOR)
   const [bantCareTemplate, setBantCareTemplate] = useState(DEFAULT_BANTCARE_TEMPLATE)
+  const [biddingTeamUsers, setBiddingTeamUsers] = useState<{
+    vp: { id: string; name: string }[]
+    sales: { id: string; name: string }[]
+    presales: { id: string; name: string }[]
+    dm: { id: string; name: string }[]
+  }>({ vp: [], sales: [], presales: [], dm: [] })
   const svgRef = useRef<SVGSVGElement>(null)
   const supabase = createClient()
   const router = useRouter()
@@ -61,6 +67,11 @@ export default function AppPage() {
       // Fetch admin-configured BANT&CARE template (falls back to default if not set)
       supabase.from('templates').select('content').eq('type', 'bantcare').maybeSingle()
         .then(({ data }) => { if (data?.content) setBantCareTemplate(data.content) })
+
+      // Fetch bidding team users (VP/Sales/Presales roles)
+      fetch('/api/users/bidding-team')
+        .then(r => r.ok ? r.json() : null)
+        .then(data => { if (data) setBiddingTeamUsers(data) })
 
       const { data: projs } = await supabase
         .from('projects')
@@ -235,6 +246,10 @@ export default function AppPage() {
               savedFlash={bantCareSavedFlash}
               isDirty={bantCareContent !== bantCareSavedContent}
               hasProject={!!activeProject}
+              vpUsers={biddingTeamUsers.vp}
+              salesUsers={biddingTeamUsers.sales}
+              presalesUsers={biddingTeamUsers.presales}
+              dmUsers={biddingTeamUsers.dm}
               onContentChange={setBantCareContent}
               onSave={handleBantCareSave}
               onEditorDividerDrag={handleBantCareEditorDividerDrag}

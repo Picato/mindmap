@@ -7,6 +7,8 @@ export interface Profile {
   avatar_url: string | null
   alias: string | null
   role: Role
+  sales_roles: string[]
+  job_title: string | null
   created_at: string
 }
 

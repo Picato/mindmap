@@ -6,6 +6,7 @@ export const DEFAULT_BANTCARE_TEMPLATE = `# Deal Name: <Deal Name>
 # Bidding Team VP: <VP Name>
 # Bidding Team Sales: <Sales Names>
 # Bidding Team Presales: <Presales Names>
+# Bidding Team DM: <DM Name>
 # Win Probability: <e.g., 70%>
 # Sales Model: <e.g., Fix Price>
 # 1st Year Revenue: <e.g., SGD 500K>
@@ -62,13 +63,14 @@ Questions might include:
 <Describe FPT's relevant expertise, certifications, and resources for this opportunity>
 `
 
-interface BantCareData {
+export interface BantCareMetadata {
   dealName: string
   client: string
   totalContractValue: string
   biddingTeamVP: string
   biddingTeamSales: string
   biddingTeamPresales: string
+  biddingTeamDM: string
   winProbability: string
   salesModel: string
   firstYearRevenue: string
@@ -77,13 +79,27 @@ interface BantCareData {
   qualified: string
   qualifiedReason: string
   winningTheme: string
+}
+
+export interface BantCareSections {
+  budget: string
+  authority: string
+  need: string
+  timeline: string
+  competitors: string
+  advantages: string
+  risk: string
+  expertise: string
+}
+
+interface BantCareData extends BantCareMetadata {
   sections: Record<string, string>
 }
 
 function parseBantCare(markdown: string): BantCareData {
   const data: BantCareData = {
     dealName: '', client: '', totalContractValue: '',
-    biddingTeamVP: '', biddingTeamSales: '', biddingTeamPresales: '',
+    biddingTeamVP: '', biddingTeamSales: '', biddingTeamPresales: '', biddingTeamDM: '',
     winProbability: '', salesModel: '', firstYearRevenue: '',
     margin: '', contractTerm: '', qualified: '', qualifiedReason: '',
     winningTheme: '', sections: {},
@@ -94,14 +110,12 @@ function parseBantCare(markdown: string): BantCareData {
   const sectionLines: Record<string, string[]> = {}
 
   for (const line of lines) {
-    // ## Section header
     if (line.startsWith('## ')) {
       currentSection = line.slice(3).trim().toLowerCase()
       sectionLines[currentSection] = []
       continue
     }
 
-    // # Key: Value metadata (only before first ## section)
     if (currentSection === null && line.startsWith('# ')) {
       const colonIdx = line.indexOf(':')
       if (colonIdx > 0) {
@@ -114,6 +128,7 @@ function parseBantCare(markdown: string): BantCareData {
           case 'bidding team vp':       data.biddingTeamVP = value; break
           case 'bidding team sales':    data.biddingTeamSales = value; break
           case 'bidding team presales': data.biddingTeamPresales = value; break
+          case 'bidding team dm':       data.biddingTeamDM = value; break
           case 'win probability':       data.winProbability = value; break
           case 'sales model':           data.salesModel = value; break
           case '1st year revenue':      data.firstYearRevenue = value; break
@@ -127,7 +142,6 @@ function parseBantCare(markdown: string): BantCareData {
       continue
     }
 
-    // Section content
     if (currentSection !== null) {
       sectionLines[currentSection].push(line)
     }
@@ -185,6 +199,78 @@ function bRow(label: string, content: string, side: 'bant' | 'care'): string {
   return `<div class="bc-row bc-${side}-row"><div class="bc-row-lbl">${label}</div><div class="bc-row-cnt">${content}</div></div>`
 }
 
+export const EMPTY_METADATA: BantCareMetadata = {
+  dealName: '', client: '', totalContractValue: '',
+  biddingTeamVP: '', biddingTeamSales: '', biddingTeamPresales: '', biddingTeamDM: '',
+  winProbability: '', salesModel: '', firstYearRevenue: '',
+  margin: '', contractTerm: '', qualified: 'YES', qualifiedReason: '',
+  winningTheme: '',
+}
+
+export const EMPTY_SECTIONS: BantCareSections = {
+  budget: '', authority: '', need: '', timeline: '',
+  competitors: '', advantages: '', risk: '', expertise: '',
+}
+
+export function metadataToMarkdown(meta: BantCareMetadata): string {
+  return [
+    `# Deal Name: ${meta.dealName}`,
+    `# Client: ${meta.client}`,
+    `# Total Contract Value: ${meta.totalContractValue}`,
+    `# Bidding Team VP: ${meta.biddingTeamVP}`,
+    `# Bidding Team Sales: ${meta.biddingTeamSales}`,
+    `# Bidding Team Presales: ${meta.biddingTeamPresales}`,
+    `# Bidding Team DM: ${meta.biddingTeamDM}`,
+    `# Win Probability: ${meta.winProbability}`,
+    `# Sales Model: ${meta.salesModel}`,
+    `# 1st Year Revenue: ${meta.firstYearRevenue}`,
+    `# Margin: ${meta.margin}`,
+    `# Contract Term: ${meta.contractTerm}`,
+    `# Qualified: ${meta.qualified}`,
+    `# Qualified Reason: ${meta.qualifiedReason}`,
+    `# Winning Theme: ${meta.winningTheme}`,
+  ].join('\n')
+}
+
+export function sectionsToMarkdown(s: BantCareSections): string {
+  return [
+    `## Budget\n${s.budget}`,
+    `## Authority\n${s.authority}`,
+    `## Need\n${s.need}`,
+    `## Timeline\n${s.timeline}`,
+    `## Competitors\n${s.competitors}`,
+    `## Advantages & Value Proposition\n${s.advantages}`,
+    `## Risk / Challenges / Not Clear\n${s.risk}`,
+    `## Expertise\n${s.expertise}`,
+  ].join('\n\n')
+}
+
+export function extractMetadataAndSections(markdown: string): { metadata: BantCareMetadata; sections: BantCareSections } {
+  const d = parseBantCare(markdown)
+  const gs = (key: string) => getSection(d.sections, key)
+  return {
+    metadata: {
+      dealName: d.dealName, client: d.client, totalContractValue: d.totalContractValue,
+      biddingTeamVP: d.biddingTeamVP, biddingTeamSales: d.biddingTeamSales,
+      biddingTeamPresales: d.biddingTeamPresales, biddingTeamDM: d.biddingTeamDM,
+      winProbability: d.winProbability, salesModel: d.salesModel,
+      firstYearRevenue: d.firstYearRevenue, margin: d.margin,
+      contractTerm: d.contractTerm, qualified: d.qualified,
+      qualifiedReason: d.qualifiedReason, winningTheme: d.winningTheme,
+    },
+    sections: {
+      budget: gs('budget'),
+      authority: gs('authority'),
+      need: gs('need'),
+      timeline: gs('timeline'),
+      competitors: gs('competitors'),
+      advantages: gs('advantages'),
+      risk: gs('risk'),
+      expertise: gs('expertise'),
+    },
+  }
+}
+
 export function generateBantCareHTML(markdown: string): string {
   if (!markdown.trim()) return ''
 
@@ -198,6 +284,7 @@ export function generateBantCareHTML(markdown: string): string {
     d.biddingTeamVP       && `<div>VP: ${esc(d.biddingTeamVP)}</div>`,
     d.biddingTeamSales    && `<div>Sales: ${esc(d.biddingTeamSales)}</div>`,
     d.biddingTeamPresales && `<div>Presales: ${esc(d.biddingTeamPresales)}</div>`,
+    d.biddingTeamDM       && `<div>DM: ${esc(d.biddingTeamDM)}</div>`,
   ].filter(Boolean).join('')
   const biddingTeam = biddingParts || '—'
 

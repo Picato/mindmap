@@ -4,6 +4,8 @@ import BantCareEditorPanel from '@/components/panels/BantCareEditorPanel'
 import BantCarePreviewPanel from '@/components/panels/BantCarePreviewPanel'
 import PanelDivider from '@/components/panels/PanelDivider'
 
+interface ProfileOption { id: string; name: string }
+
 interface BantCareTabProps {
   content: string
   editorWidth: number
@@ -12,6 +14,10 @@ interface BantCareTabProps {
   savedFlash: boolean
   isDirty: boolean
   hasProject: boolean
+  vpUsers?: ProfileOption[]
+  salesUsers?: ProfileOption[]
+  presalesUsers?: ProfileOption[]
+  dmUsers?: ProfileOption[]
   onContentChange: (value: string) => void
   onSave: () => void
   onEditorDividerDrag: (delta: number) => void
@@ -25,6 +31,10 @@ export default function BantCareTab({
   savedFlash,
   isDirty,
   hasProject,
+  vpUsers = [],
+  salesUsers = [],
+  presalesUsers = [],
+  dmUsers = [],
   onContentChange,
   onSave,
   onEditorDividerDrag,
@@ -42,6 +52,10 @@ export default function BantCareTab({
           savedFlash={savedFlash}
           isDirty={isDirty}
           hasProject={hasProject}
+          vpUsers={vpUsers}
+          salesUsers={salesUsers}
+          presalesUsers={presalesUsers}
+          dmUsers={dmUsers}
           onContentChange={onContentChange}
           onSave={onSave}
         />
